@@ -13,7 +13,7 @@ requires = [
 [project]
 name = "circuitpython-miniethers"
 description = "Circuitpython module for ethereum wallet creation and signing"
-version = "0.0.0+auto.0"
+version = "1.0.0-rc.1"
 readme = "README.rst"
 authors = [
     {name = "Shamba Chowdhury", email = "shambachowdhury2@gmail.com"}

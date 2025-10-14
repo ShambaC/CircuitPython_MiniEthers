@@ -23,7 +23,7 @@ Implementation Notes
 
 # imports
 
-__version__ = "0.0.0+auto.0"
+__version__ = "1.0.0-rc.1"
 __repo__ = "https://github.com/ShambaC/CircuitPython_MiniEthers.git"
 
 import binascii
