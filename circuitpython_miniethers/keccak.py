@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2017 Scott Shawcroft, written for Adafruit Industries
+# SPDX-FileCopyrightText: Copyright (c) 2024 ctz
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Pure python implementation of the Keccak hash function,
 
@@ -6,9 +11,10 @@ Author: ctz
 Source: https://github.com/ctz/keccak
 """
 
-from math import log
-from functools import reduce
 from binascii import hexlify
+from functools import reduce
+from math import log
+
 
 # Lightweight deepcopy implementation for CircuitPython environments
 def deepcopy(obj, _memo=None):
@@ -53,8 +59,10 @@ def deepcopy(obj, _memo=None):
     # Fallback: try to shallow-copy by returning the object itself
     return obj
 
+
 def xor(a, b):
     return a ^ b
+
 
 # The Keccak-f round constants.
 RoundConstants = [
@@ -183,9 +191,7 @@ def keccak_f(state):
         b = zero()
         for x in rangew:
             for y in rangeh:
-                b[y % w][(2 * x + 3 * y) % h] = rol(
-                    a[x][y], RotationConstants[y][x], lanew
-                )
+                b[y % w][(2 * x + 3 * y) % h] = rol(a[x][y], RotationConstants[y][x], lanew)
 
         # chi
         for x in rangew:
@@ -380,7 +386,7 @@ class KeccakHash:
 
     def __init__(self, bitrate_bits, capacity_bits, output_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in (25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, multirate_padding, keccak_f
         )
@@ -436,7 +442,7 @@ class SHA3Hash:
 
     def __init__(self, bitrate_bits, capacity_bits, output_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in (25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, sha_padding, keccak_f
         )
@@ -492,7 +498,7 @@ class SHAKE:
 
     def __init__(self, bitrate_bits, capacity_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in (25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, shake_padding, keccak_f
         )

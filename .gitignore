@@ -52,3 +52,6 @@ pyvenv.cfg
 Lib
 Scripts
 Include
+
+# Custom
+ethers_docs
