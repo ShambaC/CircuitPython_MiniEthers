@@ -7,5 +7,5 @@
 API Reference
 #############
 
-.. automodule:: miniethers
+.. automodule:: circuitpython_miniethers.miniethers
     :members:
