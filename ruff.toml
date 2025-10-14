@@ -47,8 +47,11 @@ extend-select = [
   "UP004",  # useless-object-inheritance
   "PLR0206",  # property-with-parameters
   "PLR0904",  # too-many-public-methods
+  "PLR0911",  # too-many-return-statements
+  "PLR0912",  # too-many-branches
   "PLR0913",  # too-many-arguments
   "PLR0914",  # too-many-locals
+  "PLR0915",  # too-many-statements
   "PLR0916",  # too-many-boolean-expressions
   "PLR1702",  # too-many-nested-blocks
   "PLR1704",  # redefined-argument-from-local
@@ -86,9 +89,6 @@ extend-select = [
 ]
 
 ignore = [
-    "PLR0911",  # too-many-return-statements
-    "PLR0912",  # too-many-branches
-    "PLR0915",  # too-many-statements
     "PLR2004", # magic-value-comparison
     "UP030", # format literals
     "PLW1514",  # unspecified-encoding
