@@ -6,7 +6,8 @@
 from circuitpython_miniethers import Signature, Wallet
 
 # The private key is used for both signing methods
-# IMPORTANT: In a real app, never hardcode private keys. Use environment variables or a secure wallet connection.
+# IMPORTANT: In a real app, never hardcode private keys.
+# Use environment variables or a secure wallet connection.
 privateKey = "0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc"
 
 # Create a wallet instance from the private key
@@ -26,8 +27,6 @@ def generateFlatSignature():
     print(f"Signer Address: {wallet.address}")
     print("---")
 
-    # CircuitPython MiniEthers automatically prefixes the message with "\x19Ethereum Signed Message:\n"
-    # followed by the message length, as per the ERC-191 spec.
     flatSignature = wallet.signMessage(message)
 
     print("Full Flat Signature:", flatSignature)
@@ -51,10 +50,14 @@ def signTypedDataMail():
     # 1. The Domain Separator: Defines the context of the signature.
     # This prevents a signature from being valid in a different application.
     domain = {
-        "name": "Ether Mail",  # The user-friendly name of the signing domain
-        "version": "1",  # The current version of the signing domain
-        "chainId": 1,  # The chain ID of the intended network (1 for Ethereum Mainnet)
-        "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",  # The address of the contract that will verify the signature
+        # The user-friendly name of the signing domain
+        "name": "Ether Mail",
+        # The current version of the signing domain
+        "version": "1",
+        # The chain ID of the intended network (1 for Ethereum Mainnet)
+        "chainId": 1,
+        # The address of the contract that will verify the signature
+        "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
     }
 
     # 2. The Types: Defines the structure of the data being signed.

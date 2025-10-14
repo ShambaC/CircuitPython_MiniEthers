@@ -139,7 +139,7 @@ class Wallet:
         Initialize wallet with optional private key
 
         Args:
-            private_key: Hex string (with or without 0x prefix) or integer private key, or None to generate new one
+            private_key: Hex string or integer private key, or None to generate new one
         """
         if private_key is None:
             self._private_key = self._generate_private_key()
@@ -450,93 +450,120 @@ class Wallet:
         return "0" * (width - len(s)) + s
 
     @staticmethod
+    def _encode_string(value):
+        """Encode string type"""
+        if isinstance(value, str):
+            return Wallet._hash_message(value.encode("utf-8")).to_bytes(32, "big")
+        return Wallet._hash_message(str(value).encode("utf-8")).to_bytes(32, "big")
+
+    @staticmethod
+    def _encode_bytes(value):
+        """Encode bytes type"""
+        if isinstance(value, str):
+            if value.startswith("0x"):
+                return Wallet._hash_message(bytes.fromhex(value[2:])).to_bytes(32, "big")
+            return Wallet._hash_message(value.encode("utf-8")).to_bytes(32, "big")
+        return Wallet._hash_message(value).to_bytes(32, "big")
+
+    @staticmethod
+    def _encode_fixed_bytes(type_name, value):
+        """Encode fixed bytes type (bytes1, bytes32, etc.)"""
+        if isinstance(value, str) and value.startswith("0x"):
+            hex_value = value[2:]
+            size = int(type_name[5:]) if len(type_name) > 5 else 32
+            hex_value = Wallet._custom_zfill(hex_value, size * 2)[: size * 2]
+            return Wallet._custom_ljust(bytes.fromhex(hex_value), 32, b"\x00")
+        return Wallet._custom_ljust(str(value).encode("utf-8"), 32, b"\x00")[:32]
+
+    @staticmethod
+    def _encode_address(value):
+        """Encode address type"""
+        if isinstance(value, str):
+            addr_hex = value[2:] if value.startswith("0x") else value
+            addr_hex = Wallet._custom_zfill(addr_hex.lower(), 40)
+            return Wallet._custom_rjust(bytes.fromhex(addr_hex), 32, b"\x00")
+        return bytes(32)
+
+    @staticmethod
+    def _encode_uint(value):
+        """Encode unsigned integer type"""
+        if isinstance(value, str):
+            num_value = int(value, 16) if value.startswith("0x") else int(value)
+        else:
+            num_value = int(value)
+        return num_value.to_bytes(32, "big")
+
+    @staticmethod
+    def _encode_int(value):
+        """Encode signed integer type"""
+        if isinstance(value, str):
+            num_value = int(value, 16) if value.startswith("0x") else int(value)
+        else:
+            num_value = int(value)
+
+        if num_value < 0:
+            num_value = (1 << 256) + num_value
+
+        return num_value.to_bytes(32, "big")
+
+    @staticmethod
+    def _encode_bool(value):
+        """Encode boolean type"""
+        bool_value = bool(value)
+        return (1 if bool_value else 0).to_bytes(32, "big")
+
+    @staticmethod
+    def _encode_array(element_type, value, types):
+        """Encode array type"""
+        if not isinstance(value, (list, tuple)):
+            value = [value]
+
+        encoded_elements = []
+        for item in value:
+            if element_type in types:
+                encoded_elements.append(
+                    Wallet._hash_struct(element_type, item, types).to_bytes(32, "big")
+                )
+            else:
+                encoded_elements.append(Wallet._encode_value(element_type, item, types))
+
+        array_data = b"".join(encoded_elements)
+        return Wallet._hash_message(array_data).to_bytes(32, "big")
+
+    @staticmethod
     def _encode_value(type_name, value, types):
         """Encode a value according to its type"""
+        result = None
+
+        # Primitive types
         if type_name == "string":
-            if isinstance(value, str):
-                return Wallet._hash_message(value.encode("utf-8")).to_bytes(32, "big")
-            else:
-                return Wallet._hash_message(str(value).encode("utf-8")).to_bytes(32, "big")
-
+            result = Wallet._encode_string(value)
         elif type_name == "bytes":
-            if isinstance(value, str):
-                if value.startswith("0x"):
-                    return Wallet._hash_message(bytes.fromhex(value[2:])).to_bytes(32, "big")
-                else:
-                    return Wallet._hash_message(value.encode("utf-8")).to_bytes(32, "big")
-            else:
-                return Wallet._hash_message(value).to_bytes(32, "big")
-
-        elif type_name.startswith("bytes"):
-            if isinstance(value, str) and value.startswith("0x"):
-                hex_value = value[2:]
-                size = int(type_name[5:]) if len(type_name) > 5 else 32
-                hex_value = Wallet._custom_zfill(hex_value, size * 2)[: size * 2]
-                return Wallet._custom_ljust(bytes.fromhex(hex_value), 32, b"\x00")
-            else:
-                return Wallet._custom_ljust(str(value).encode("utf-8"), 32, b"\x00")[:32]
-
+            result = Wallet._encode_bytes(value)
         elif type_name == "address":
-            if isinstance(value, str):
-                if value.startswith("0x"):
-                    addr_hex = value[2:]
-                else:
-                    addr_hex = value
-                addr_hex = Wallet._custom_zfill(addr_hex.lower(), 40)
-                return Wallet._custom_rjust(bytes.fromhex(addr_hex), 32, b"\x00")
-            else:
-                return bytes(32)
-
-        elif type_name.startswith("uint"):
-            if isinstance(value, str):
-                if value.startswith("0x"):
-                    num_value = int(value, 16)
-                else:
-                    num_value = int(value)
-            else:
-                num_value = int(value)
-            return num_value.to_bytes(32, "big")
-
-        elif type_name.startswith("int"):
-            if isinstance(value, str):
-                if value.startswith("0x"):
-                    num_value = int(value, 16)
-                else:
-                    num_value = int(value)
-            else:
-                num_value = int(value)
-
-            if num_value < 0:
-                num_value = (1 << 256) + num_value
-
-            return num_value.to_bytes(32, "big")
-
+            result = Wallet._encode_address(value)
         elif type_name == "bool":
-            bool_value = bool(value)
-            return (1 if bool_value else 0).to_bytes(32, "big")
-
+            result = Wallet._encode_bool(value)
+        # Numeric types
+        elif type_name.startswith("uint"):
+            result = Wallet._encode_uint(value)
+        elif type_name.startswith("int"):
+            result = Wallet._encode_int(value)
+        # Fixed-size bytes
+        elif type_name.startswith("bytes"):
+            result = Wallet._encode_fixed_bytes(type_name, value)
+        # Array types
         elif type_name.endswith("[]"):
             element_type = type_name[:-2]
-            if not isinstance(value, (list, tuple)):
-                value = [value]
-
-            encoded_elements = []
-            for item in value:
-                if element_type in types:
-                    encoded_elements.append(
-                        Wallet._hash_struct(element_type, item, types).to_bytes(32, "big")
-                    )
-                else:
-                    encoded_elements.append(Wallet._encode_value(element_type, item, types))
-
-            array_data = b"".join(encoded_elements)
-            return Wallet._hash_message(array_data).to_bytes(32, "big")
-
+            result = Wallet._encode_array(element_type, value, types)
+        # Custom struct types
         elif type_name in types:
-            return Wallet._hash_struct(type_name, value, types).to_bytes(32, "big")
-
+            result = Wallet._hash_struct(type_name, value, types).to_bytes(32, "big")
+        # Default fallback
         else:
-            return Wallet._hash_message(str(value).encode("utf-8")).to_bytes(32, "big")
+            result = Wallet._hash_message(str(value).encode("utf-8")).to_bytes(32, "big")
+
+        return result
 
     @staticmethod
     def _hash_struct(primary_type, data, types):
