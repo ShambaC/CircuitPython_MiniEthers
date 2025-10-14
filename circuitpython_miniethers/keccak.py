@@ -386,7 +386,7 @@ class KeccakHash:
 
     def __init__(self, bitrate_bits, capacity_bits, output_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in {25, 50, 100, 200, 400, 800, 1600}
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, multirate_padding, keccak_f
         )
@@ -442,7 +442,7 @@ class SHA3Hash:
 
     def __init__(self, bitrate_bits, capacity_bits, output_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in {25, 50, 100, 200, 400, 800, 1600}
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, sha_padding, keccak_f
         )
@@ -498,7 +498,7 @@ class SHAKE:
 
     def __init__(self, bitrate_bits, capacity_bits):
         # our in-absorption sponge. this is never given padding
-        assert bitrate_bits + capacity_bits in set(25, 50, 100, 200, 400, 800, 1600)
+        assert bitrate_bits + capacity_bits in {25, 50, 100, 200, 400, 800, 1600}
         self.sponge = KeccakSponge(
             bitrate_bits, bitrate_bits + capacity_bits, shake_padding, keccak_f
         )

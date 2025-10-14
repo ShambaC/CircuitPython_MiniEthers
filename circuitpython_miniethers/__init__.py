@@ -7,4 +7,6 @@
 CircuitPython MiniEthers - A lightweight Ethereum wallet library for CircuitPython
 """
 
-from .miniethers import Wallet
+from .miniethers import Signature, Wallet
+
+__all__ = ["Wallet", "Signature"]

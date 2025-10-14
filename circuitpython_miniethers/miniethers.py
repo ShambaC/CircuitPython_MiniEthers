@@ -40,6 +40,94 @@ GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
 GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
 
 
+def _int_to_hex(num, length=64):
+    """Convert integer to hex string with padding"""
+    try:
+        hex_str = hex(num)[2:]
+        return ("0" * (length - len(hex_str)) + hex_str) if len(hex_str) < length else hex_str
+    except Exception:
+        return "0" * length
+
+
+class Signature:
+    """
+    A Signature represents an ECDSA signature, similar to ethers.js Signature class
+    """
+
+    def __init__(self, r=None, s=None, v=None):
+        """
+        Initialize a Signature
+
+        Args:
+            r: The r value (hex string or int)
+            s: The s value (hex string or int)
+            v: The v value (int)
+        """
+        if r is None:
+            self.r = "0x" + "0" * 64
+            self.s = "0x" + "0" * 64
+            self.v = 27
+        else:
+            if isinstance(r, str):
+                self.r = r if r.startswith("0x") else "0x" + r
+            else:
+                self.r = "0x" + _int_to_hex(r)
+
+            if isinstance(s, str):
+                self.s = s if s.startswith("0x") else "0x" + s
+            else:
+                self.s = "0x" + _int_to_hex(s)
+
+            self.v = v if v is not None else 27
+
+    @property
+    def yParity(self):
+        """The yParity for the signature (0 or 1)"""
+        return 0 if self.v == 27 else 1
+
+    @property
+    def serialized(self):
+        """The serialized representation (r + s + v format)"""
+        r_hex = self.r[2:] if self.r.startswith("0x") else self.r
+        s_hex = self.s[2:] if self.s.startswith("0x") else self.s
+        v_hex = self._custom_zfill(hex(self.v)[2:], 2)
+        return "0x" + r_hex + s_hex + v_hex
+
+    @staticmethod
+    def from_sig(sig):
+        """
+        Create a Signature from various formats
+
+        Use as: Signature.from_sig(signature) or access via getattr(Signature, 'from')(signature)
+
+        Args:
+            sig: Can be a string (compact signature), dict with r/s/v, or Signature instance
+
+        Returns:
+            Signature: A new Signature instance
+        """
+        if isinstance(sig, Signature):
+            return sig
+
+        if isinstance(sig, dict):
+            return Signature(sig.get("r"), sig.get("s"), sig.get("v"))
+
+        if isinstance(sig, str):
+            sig = sig[2:] if sig.startswith("0x") else sig
+
+            if len(sig) == 130:
+                r = "0x" + sig[0:64]
+                s = "0x" + sig[64:128]
+                v = int(sig[128:130], 16)
+                return Signature(r, s, v)
+
+        raise ValueError("Invalid signature format")
+
+
+# Add 'from' as an alias using setattr to avoid syntax error
+setattr(Signature, "from", Signature.from_sig)
+
+
 class Wallet:
     """
     Ethereum wallet for CircuitPython
@@ -51,16 +139,60 @@ class Wallet:
         Initialize wallet with optional private key
 
         Args:
-            private_key: Integer private key or None to generate new one
+            private_key: Hex string (with or without 0x prefix) or integer private key, or None to generate new one
         """
         if private_key is None:
             self._private_key = self._generate_private_key()
         else:
+            # Handle hex string input
+            if isinstance(private_key, str):
+                if private_key.startswith("0x"):
+                    private_key = int(private_key, 16)
+                else:
+                    private_key = int(private_key, 16)
+
             if not (1 <= private_key < N):
                 raise ValueError("Private key must be in range [1, N-1]")
             self._private_key = private_key
 
         self._public_key = self._derive_public_key()
+        self._address = None  # Cache for address
+
+    @property
+    def address(self):
+        """
+        The wallet address (read-only property)
+
+        Returns:
+            str: Hex formatted Ethereum address with 0x prefix
+        """
+        if self._address is None:
+            pub_x, pub_y = self._public_key
+            concat_x_y = pub_x.to_bytes(32, "big") + pub_y.to_bytes(32, "big")
+            eth_address = keccak.Keccak256(concat_x_y).digest()[-20:]
+            self._address = "0x" + binascii.hexlify(eth_address).decode()
+        return self._address
+
+    @property
+    def privateKey(self):
+        """
+        The private key (read-only property)
+
+        Returns:
+            str: Hex formatted private key with 0x prefix
+        """
+        return "0x" + _int_to_hex(self._private_key)
+
+    @property
+    def publicKey(self):
+        """
+        The uncompressed public key (read-only property)
+
+        Returns:
+            str: Hex formatted uncompressed public key with 0x04 prefix
+        """
+        pub_x, pub_y = self._public_key
+        return "0x04" + _int_to_hex(pub_x) + _int_to_hex(pub_y)
 
     @staticmethod
     def _safe_mod(a, m):
@@ -234,104 +366,6 @@ class Wallet:
         full_message = prefix + length + message
 
         return Wallet._hash_message(full_message)
-
-    def _sign_message_hash(self, message_hash):
-        """Sign a message hash with private key using ECDSA"""
-        z = self._safe_mod(message_hash, N)
-
-        max_attempts = 50
-
-        for attempt in range(max_attempts):
-            try:
-                k = self._generate_rfc6979_k(self._private_key, message_hash, attempt)
-
-                if k == 0:
-                    continue
-
-                rx, _ = self._scalar_mult(k, GX, GY)
-                if rx is None:
-                    continue
-
-                r = self._safe_mod(rx, N)
-                if r == 0:
-                    continue
-
-                r_priv = self._safe_mod(r * self._private_key, N)
-                z_plus_r_priv = self._safe_mod(z + r_priv, N)
-
-                k_inv = self._mod_inverse(k, N)
-                s = self._safe_mod(k_inv * z_plus_r_priv, N)
-
-                if s == 0:
-                    continue
-
-                if s > N // 2:
-                    s = N - s
-
-                return r, s
-
-            except Exception:
-                continue
-
-        raise RuntimeError(f"Failed to generate signature after {max_attempts} attempts")
-
-    def _recover_public_key(self, message_hash, r, s, recovery_id):
-        """Recover public key from signature"""
-        try:
-            x = r + (recovery_id // 2) * N
-
-            y_squared = self._safe_mod(x * x * x + 7, P)
-            y = pow(y_squared, (P + 1) // 4, P)
-
-            if (y % 2) != (recovery_id % 2):
-                y = P - y
-
-            r_inv = self._mod_inverse(r, N)
-            e = self._safe_mod(message_hash, N)
-
-            sr_x, sr_y = self._scalar_mult(s, x, y)
-            eg_x, eg_y = self._scalar_mult(e, GX, GY)
-
-            neg_eg_y = P - eg_y if eg_y != 0 else 0
-            diff_x, diff_y = self._point_add(sr_x, sr_y, eg_x, neg_eg_y)
-
-            pub_x, pub_y = self._scalar_mult(r_inv, diff_x, diff_y)
-
-            return pub_x, pub_y
-
-        except Exception:
-            return None, None
-
-    def _calculate_recovery_id(self, message_hash, r, s):
-        """Calculate the correct recovery ID (v) for the signature"""
-        actual_pub_x, actual_pub_y = self._public_key
-
-        for recovery_id in range(4):
-            recovered_pub_x, recovered_pub_y = self._recover_public_key(
-                message_hash, r, s, recovery_id
-            )
-
-            if recovered_pub_x == actual_pub_x and recovered_pub_y == actual_pub_y:
-                return recovery_id
-
-        return 0
-
-    def sign_message(self, message):
-        """
-        Sign a personal message (ERC-191)
-
-        Args:
-            message: String or bytes to sign
-
-        Returns:
-            dict: {'r': hex string, 's': hex string, 'v': int}
-        """
-        message_hash = self._create_ethereum_message_hash(message)
-        r, s = self._sign_message_hash(message_hash)
-        recovery_id = self._calculate_recovery_id(message_hash, r, s)
-        v = 27 + recovery_id
-
-        return {"r": "0x" + self._int_to_hex(r), "s": "0x" + self._int_to_hex(s), "v": v}
 
     @staticmethod
     def _encode_type(primary_type, types):
@@ -547,25 +581,153 @@ class Wallet:
 
         return Wallet._hash_message(final_data)
 
-    def sign_typed_data(self, domain, types, primary_type, message):
+    def _sign_message_hash(self, message_hash):
+        """Sign a message hash with private key using ECDSA"""
+        z = self._safe_mod(message_hash, N)
+
+        max_attempts = 50
+
+        for attempt in range(max_attempts):
+            try:
+                k = self._generate_rfc6979_k(self._private_key, message_hash, attempt)
+
+                if k == 0:
+                    continue
+
+                rx, _ = self._scalar_mult(k, GX, GY)
+                if rx is None:
+                    continue
+
+                r = self._safe_mod(rx, N)
+                if r == 0:
+                    continue
+
+                r_priv = self._safe_mod(r * self._private_key, N)
+                z_plus_r_priv = self._safe_mod(z + r_priv, N)
+
+                k_inv = self._mod_inverse(k, N)
+                s = self._safe_mod(k_inv * z_plus_r_priv, N)
+
+                if s == 0:
+                    continue
+
+                if s > N // 2:
+                    s = N - s
+
+                return r, s
+
+            except Exception:
+                continue
+
+        raise RuntimeError(f"Failed to generate signature after {max_attempts} attempts")
+
+    def _recover_public_key(self, message_hash, r, s, recovery_id):
+        """Recover public key from signature"""
+        try:
+            x = r + (recovery_id // 2) * N
+
+            y_squared = self._safe_mod(x * x * x + 7, P)
+            y = pow(y_squared, (P + 1) // 4, P)
+
+            if (y % 2) != (recovery_id % 2):
+                y = P - y
+
+            r_inv = self._mod_inverse(r, N)
+            e = self._safe_mod(message_hash, N)
+
+            sr_x, sr_y = self._scalar_mult(s, x, y)
+            eg_x, eg_y = self._scalar_mult(e, GX, GY)
+
+            neg_eg_y = P - eg_y if eg_y != 0 else 0
+            diff_x, diff_y = self._point_add(sr_x, sr_y, eg_x, neg_eg_y)
+
+            pub_x, pub_y = self._scalar_mult(r_inv, diff_x, diff_y)
+
+            return pub_x, pub_y
+
+        except Exception:
+            return None, None
+
+    def _calculate_recovery_id(self, message_hash, r, s):
+        """Calculate the correct recovery ID (v) for the signature"""
+        actual_pub_x, actual_pub_y = self._public_key
+
+        for recovery_id in range(4):
+            recovered_pub_x, recovered_pub_y = self._recover_public_key(
+                message_hash, r, s, recovery_id
+            )
+
+            if recovered_pub_x == actual_pub_x and recovered_pub_y == actual_pub_y:
+                return recovery_id
+
+        return 0
+
+    def signMessage(self, message):
+        """
+        Sign a personal message (ERC-191)
+        Similar to ethers.js wallet.signMessage()
+
+        Args:
+            message: String or bytes to sign
+
+        Returns:
+            str: Compact signature string in format 0xrrrrr...sssss...vv
+        """
+        message_hash = self._create_ethereum_message_hash(message)
+        r, s = self._sign_message_hash(message_hash)
+        recovery_id = self._calculate_recovery_id(message_hash, r, s)
+        v = 27 + recovery_id
+
+        r_hex = _int_to_hex(r)
+        s_hex = _int_to_hex(s)
+        v_hex = self._custom_zfill(hex(v)[2:], 2)
+
+        return "0x" + r_hex + s_hex + v_hex
+
+    def _signTypedData(self, domain, types, message):
         """
         Sign typed data using EIP-712 standard
+        Similar to ethers.js wallet._signTypedData()
 
         Args:
             domain: Domain separator dict
-            types: Type definitions dict
-            primary_type: Name of the primary type
+            types: Type definitions dict (without EIP712Domain)
             message: Message data dict
 
         Returns:
-            dict: {'r': hex string, 's': hex string, 'v': int}
+            str: Compact signature string in format 0xrrrrr...sssss...vv
         """
+        # Determine the primary type from the types dict
+        # Find the type that is not referenced by others
+        all_types = set(types.keys())
+        referenced_types = set()
+
+        for type_name in types:
+            for field in types[type_name]:
+                field_type = field["type"]
+                if field_type.endswith("[]"):
+                    field_type = field_type[:-2]
+                if field_type in all_types:
+                    referenced_types.add(field_type)
+
+        # Primary type is the one not referenced by others
+        primary_types = all_types - referenced_types
+        if len(primary_types) == 1:
+            primary_type = list(primary_types)[0]
+        else:
+            # Fallback: use the first type in the dict
+            primary_type = list(types.keys())[0]
+
         typed_hash = self._encode_typed_data_v2(domain, types, primary_type, message)
         r, s = self._sign_message_hash(typed_hash)
         recovery_id = self._calculate_recovery_id(typed_hash, r, s)
         v = 27 + recovery_id
 
-        return {"r": "0x" + self._int_to_hex(r), "s": "0x" + self._int_to_hex(s), "v": v}
+        r_hex = _int_to_hex(r)
+        s_hex = _int_to_hex(s)
+        v_hex = self._custom_zfill(hex(v)[2:], 2)
+
+        return "0x" + r_hex + s_hex + v_hex
 
     def verify_signature(self, message_hash, r, s):
         """
@@ -603,19 +765,16 @@ class Wallet:
 
     def get_address(self):
         """
-        Get Ethereum address from public key
+        Get Ethereum address from public key (legacy method, use .address property instead)
 
         Returns:
             str: Hex formatted Ethereum address
         """
-        pub_x, pub_y = self._public_key
-        concat_x_y = pub_x.to_bytes(32, "big") + pub_y.to_bytes(32, "big")
-        eth_address = keccak.Keccak256(concat_x_y).digest()[-20:]
-        return "0x" + binascii.hexlify(eth_address).decode()
+        return self.address
 
     def get_public_key(self):
         """
-        Get public key
+        Get public key (legacy method)
 
         Returns:
             tuple: (x, y) coordinates as integers
@@ -624,18 +783,9 @@ class Wallet:
 
     def get_private_key(self):
         """
-        Get private key
+        Get private key as integer (legacy method, use .privateKey property for hex string)
 
         Returns:
             int: Private key
         """
         return self._private_key
-
-    @staticmethod
-    def _int_to_hex(num, length=64):
-        """Convert integer to hex string with padding"""
-        try:
-            hex_str = hex(num)[2:]
-            return Wallet._custom_zfill(hex_str, length)
-        except Exception:
-            return "0" * length
