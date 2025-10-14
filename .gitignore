@@ -55,3 +55,7 @@ Include
 
 # Custom
 ethers_docs
+
+# Builds
+build*
+bundles
