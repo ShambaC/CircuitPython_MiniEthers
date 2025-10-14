@@ -41,7 +41,15 @@ GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
 
 
 def _int_to_hex(num, length=64):
-    """Convert integer to hex string with padding"""
+    """Convert integer to zero-padded hexadecimal string.
+
+    :param num: Integer to convert
+    :type num: int
+    :param length: Desired length of output string (default: 64)
+    :type length: int
+    :return: Zero-padded hexadecimal string without 0x prefix
+    :rtype: str
+    """
     try:
         hex_str = hex(num)[2:]
         return ("0" * (length - len(hex_str)) + hex_str) if len(hex_str) < length else hex_str
@@ -50,18 +58,40 @@ def _int_to_hex(num, length=64):
 
 
 class Signature:
-    """
-    A Signature represents an ECDSA signature, similar to ethers.js Signature class
+    """ECDSA signature representation compatible with ethers.js Signature class.
+
+    Represents an Elliptic Curve Digital Signature Algorithm (ECDSA) signature
+    with components r, s, and v. Provides methods for parsing and serializing
+    signatures in various formats.
+
+    :ivar r: The r component of the signature (hex string with 0x prefix)
+    :vartype r: str
+    :ivar s: The s component of the signature (hex string with 0x prefix)
+    :vartype s: str
+    :ivar v: The recovery parameter (27 or 28)
+    :vartype v: int
+
+    .. note::
+        Compatible with ethers.js v6 Signature format.
     """
 
     def __init__(self, r=None, s=None, v=None):
-        """
-        Initialize a Signature
+        """Initialize a Signature instance.
 
-        Args:
-            r: The r value (hex string or int)
-            s: The s value (hex string or int)
-            v: The v value (int)
+        :param r: The r value as hex string or integer (optional)
+        :type r: str or int or None
+        :param s: The s value as hex string or integer (optional)
+        :type s: str or int or None
+        :param v: The recovery parameter, typically 27 or 28 (optional)
+        :type v: int or None
+
+        .. code-block:: python
+
+            # Create from components
+            sig = Signature(r="0x123...", s="0xabc...", v=27)
+
+            # Create empty signature
+            sig = Signature()
         """
         if r is None:
             self.r = "0x" + "0" * 64
@@ -82,12 +112,31 @@ class Signature:
 
     @property
     def yParity(self):
-        """The yParity for the signature (0 or 1)"""
+        """The y-parity of the signature point.
+
+        :return: 0 if v is 27, otherwise 1
+        :rtype: int
+
+        .. note::
+            yParity is used in EIP-2718 typed transactions.
+        """
         return 0 if self.v == 27 else 1
 
     @property
     def serialized(self):
-        """The serialized representation (r + s + v format)"""
+        """Compact serialized signature in hex format.
+
+        Returns the signature in compact format: r (64 chars) + s (64 chars) + v (2 chars)
+        with 0x prefix, totaling 132 characters.
+
+        :return: Compact signature string (0xrrr...sss...vv)
+        :rtype: str
+
+        .. code-block:: python
+
+            sig = Signature(r="0x123...", s="0xabc...", v=27)
+            print(sig.serialized)  # "0x123...abc...1b"
+        """
         r_hex = self.r[2:] if self.r.startswith("0x") else self.r
         s_hex = self.s[2:] if self.s.startswith("0x") else self.s
         v_hex = self._custom_zfill(hex(self.v)[2:], 2)
@@ -95,16 +144,31 @@ class Signature:
 
     @staticmethod
     def from_sig(sig):
-        """
-        Create a Signature from various formats
+        """Create a Signature from various input formats.
 
-        Use as: Signature.from_sig(signature) or access via getattr(Signature, 'from')(signature)
+        Parses and creates a Signature instance from compact signature strings,
+        dictionaries, or existing Signature instances.
 
-        Args:
-            sig: Can be a string (compact signature), dict with r/s/v, or Signature instance
+        :param sig: Signature in various formats
+        :type sig: str or dict or Signature
+        :return: A new Signature instance
+        :rtype: Signature
+        :raises ValueError: If signature format is invalid
 
-        Returns:
-            Signature: A new Signature instance
+        .. code-block:: python
+
+            # From compact signature string
+            sig = Signature.from_sig("0xrrr...sss...vv")
+
+            # From dictionary
+            sig = Signature.from_sig({"r": "0x...", "s": "0x...", "v": 27})
+
+            # Via getattr (to handle 'from' keyword)
+            sig = getattr(Signature, 'from')("0xrrr...sss...vv")
+
+        .. note::
+            This method is also available as ``Signature.from()`` via setattr,
+            but requires ``getattr(Signature, 'from')`` due to Python keyword restrictions.
         """
         if isinstance(sig, Signature):
             return sig
@@ -129,17 +193,56 @@ setattr(Signature, "from", Signature.from_sig)
 
 
 class Wallet:
-    """
-    Ethereum wallet for CircuitPython
-    Provides methods for signing messages and typed data, similar to ethers.js
+    """Ethereum wallet for signing messages and transactions.
+
+    Provides a high-level interface for Ethereum wallet operations including
+    private key management, address derivation, and message signing compatible
+    with ethers.js patterns. Optimized for CircuitPython and low-power devices.
+
+    :ivar address: Ethereum address (read-only property)
+    :vartype address: str
+    :ivar privateKey: Private key as hex string (read-only property)
+    :vartype privateKey: str
+    :ivar publicKey: Uncompressed public key as hex string (read-only property)
+    :vartype publicKey: str
+
+    .. code-block:: python
+
+        # Create wallet from private key
+        wallet = Wallet("0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+
+        # Access properties
+        print(wallet.address)      # "0x..."
+        print(wallet.privateKey)   # "0x..."
+
+        # Sign a message
+        signature = wallet.signMessage("hello")
+
+    .. note::
+        Compatible with ethers.js v6 Wallet API patterns.
     """
 
     def __init__(self, private_key=None):
-        """
-        Initialize wallet with optional private key
+        """Initialize wallet with optional private key.
 
-        Args:
-            private_key: Hex string or integer private key, or None to generate new one
+        :param private_key: Private key as hex string (with or without 0x prefix),
+                           integer, or None to generate random key
+        :type private_key: str or int or None
+        :raises ValueError: If private key is out of valid range
+
+        .. code-block:: python
+
+            # From hex string (with 0x)
+            wallet = Wallet("0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+
+            # From hex string (without 0x)
+            wallet = Wallet("022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+
+            # From integer
+            wallet = Wallet(0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc)
+
+            # Generate random wallet
+            wallet = Wallet()
         """
         if private_key is None:
             self._private_key = self._generate_private_key()
@@ -160,11 +263,18 @@ class Wallet:
 
     @property
     def address(self):
-        """
-        The wallet address (read-only property)
+        """Ethereum address derived from public key.
 
-        Returns:
-            str: Hex formatted Ethereum address with 0x prefix
+        Returns the Ethereum address computed from the wallet's public key
+        using Keccak-256 hashing. The address is cached after first computation.
+
+        :return: Ethereum address with 0x prefix (42 characters)
+        :rtype: str
+
+        .. code-block:: python
+
+            wallet = Wallet("0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+            print(wallet.address)  # "0x14791697260E4c9A71f18484C9f997B308e59325"
         """
         if self._address is None:
             pub_x, pub_y = self._public_key
@@ -175,35 +285,61 @@ class Wallet:
 
     @property
     def privateKey(self):
-        """
-        The private key (read-only property)
+        """Private key as hexadecimal string.
 
-        Returns:
-            str: Hex formatted private key with 0x prefix
+        :return: Private key with 0x prefix (66 characters)
+        :rtype: str
+
+        .. warning::
+            Never expose private keys in production environments.
         """
         return "0x" + _int_to_hex(self._private_key)
 
     @property
     def publicKey(self):
-        """
-        The uncompressed public key (read-only property)
+        """Uncompressed public key in hex format.
 
-        Returns:
-            str: Hex formatted uncompressed public key with 0x04 prefix
+        Returns the uncompressed public key (x and y coordinates concatenated)
+        with 0x04 prefix following SEC1 encoding.
+
+        :return: Uncompressed public key with 0x04 prefix (132 characters)
+        :rtype: str
+
+        .. code-block:: python
+
+            wallet = Wallet("0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+            print(wallet.publicKey)  # "0x04..."
         """
         pub_x, pub_y = self._public_key
         return "0x04" + _int_to_hex(pub_x) + _int_to_hex(pub_y)
 
     @staticmethod
     def _safe_mod(a, m):
-        """Safe modulo operation to prevent overflow"""
+        """Perform safe modulo operation handling negative numbers.
+
+        :param a: Number to compute modulo of
+        :type a: int
+        :param m: Modulus
+        :type m: int
+        :return: Result of a mod m, always positive
+        :rtype: int
+        """
         if a < 0:
             return (a % m + m) % m
         return a % m
 
     @staticmethod
     def _mod_inverse(a, m):
-        """Extended Euclidean Algorithm for modular inverse"""
+        """Compute modular multiplicative inverse using Extended Euclidean Algorithm.
+
+        :param a: Number to find inverse of
+        :type a: int
+        :param m: Modulus
+        :type m: int
+        :return: Modular inverse of a modulo m
+        :rtype: int
+        :raises ValueError: If modular inverse does not exist
+        """
         a = Wallet._safe_mod(a, m)
         if a == 0:
             raise ValueError("Modular inverse does not exist")
@@ -223,7 +359,15 @@ class Wallet:
 
     @staticmethod
     def _point_double(px, py):
-        """Double a point on secp256k1"""
+        """Double a point on the secp256k1 elliptic curve.
+
+        :param px: X-coordinate of the point
+        :type px: int
+        :param py: Y-coordinate of the point
+        :type py: int
+        :return: Tuple of (x, y) coordinates of doubled point, or (None, None) if point at infinity
+        :rtype: tuple
+        """
         if py == 0:
             return None, None
 
@@ -242,7 +386,19 @@ class Wallet:
 
     @staticmethod
     def _point_add(px, py, qx, qy):
-        """Add two points on secp256k1"""
+        """Add two points on the secp256k1 elliptic curve.
+
+        :param px: X-coordinate of first point
+        :type px: int
+        :param py: Y-coordinate of first point
+        :type py: int
+        :param qx: X-coordinate of second point
+        :type qx: int
+        :param qy: Y-coordinate of second point
+        :type qy: int
+        :return: Tuple of (x, y) coordinates of sum, or (None, None) if result is point at infinity
+        :rtype: tuple
+        """
         if px is None:
             return qx, qy
         if qx is None:
@@ -267,7 +423,19 @@ class Wallet:
 
     @staticmethod
     def _scalar_mult(k, px, py):
-        """Multiply point by scalar using binary method"""
+        """Multiply a point by a scalar using binary method (double-and-add).
+
+        Efficiently computes k * P where P is a point on secp256k1 curve.
+
+        :param k: Scalar multiplier
+        :type k: int
+        :param px: X-coordinate of the point
+        :type px: int
+        :param py: Y-coordinate of the point
+        :type py: int
+        :return: Tuple of (x, y) coordinates of k*P, or (None, None) if result is point at infinity
+        :rtype: tuple
+        """
         if k == 0:
             return None, None
         if k == 1:
@@ -291,7 +459,23 @@ class Wallet:
 
     @staticmethod
     def _generate_rfc6979_k(private_key, message_hash, attempt=0):
-        """Generate deterministic k according to RFC 6979"""
+        """Generate deterministic k value according to RFC 6979.
+
+        Produces a deterministic k value for ECDSA signing to avoid the need for
+        a cryptographically secure random number generator.
+
+        :param private_key: Private key as integer
+        :type private_key: int
+        :param message_hash: Hash of the message to sign
+        :type message_hash: int
+        :param attempt: Retry attempt number (default: 0)
+        :type attempt: int
+        :return: Deterministic k value
+        :rtype: int
+
+        .. seealso::
+            `RFC 6979 <https://tools.ietf.org/html/rfc6979>`_ for specification details.
+        """
         private_key_bytes = private_key.to_bytes(32, "big")
         message_hash_bytes = message_hash.to_bytes(32, "big")
 
@@ -326,7 +510,11 @@ class Wallet:
 
     @classmethod
     def _generate_private_key(self):
-        """Generate a random private key"""
+        """Generate a cryptographically secure random private key.
+
+        :return: Random private key in valid secp256k1 range
+        :rtype: int
+        """
 
         max_attempts = 10
         for _ in range(max_attempts):
@@ -343,12 +531,22 @@ class Wallet:
         return random.randint(1, min(N - 1, 0xFFFFFFFFFFFFFFFF))
 
     def _derive_public_key(self):
-        """Derive public key from private key"""
+        """Derive public key from private key using secp256k1 curve.
+
+        :return: Tuple of (x, y) coordinates of the public key point
+        :rtype: tuple
+        """
         return self._scalar_mult(self._private_key, GX, GY)
 
     @staticmethod
     def _hash_message(message):
-        """Hash a message using Keccak256"""
+        """Hash a message using Keccak-256.
+
+        :param message: Message to hash (string or bytes)
+        :type message: str or bytes
+        :return: Hash as integer
+        :rtype: int
+        """
         if isinstance(message, str):
             message = message.encode("utf-8")
         h = keccak.Keccak256(message)
@@ -357,7 +555,19 @@ class Wallet:
 
     @staticmethod
     def _create_ethereum_message_hash(message):
-        """Create Ethereum signed message hash with prefix (ERC-191)"""
+        """Create Ethereum signed message hash with ERC-191 prefix.
+
+        Prepends the message with ``\\x19Ethereum Signed Message:\\n`` followed by
+        the message length, as specified in ERC-191.
+
+        :param message: Message to hash (string or bytes)
+        :type message: str or bytes
+        :return: Hash of prefixed message as integer
+        :rtype: int
+
+        .. seealso::
+            `ERC-191 <https://eips.ethereum.org/EIPS/eip-191>`_ specification.
+        """
         if isinstance(message, str):
             message = message.encode("utf-8")
 
@@ -369,7 +579,15 @@ class Wallet:
 
     @staticmethod
     def _encode_type(primary_type, types):
-        """Encode a struct type according to EIP-712"""
+        """Encode a struct type definition according to EIP-712.
+
+        :param primary_type: Name of the primary type to encode
+        :type primary_type: str
+        :param types: Dictionary of type definitions
+        :type types: dict
+        :return: Encoded type string
+        :rtype: str
+        """
         result = primary_type + "("
         type_def = types.get(primary_type, [])
 
@@ -395,7 +613,15 @@ class Wallet:
 
     @staticmethod
     def _find_dependencies(primary_type, types, found_types):
-        """Find all type dependencies recursively"""
+        """Find all type dependencies recursively for EIP-712 encoding.
+
+        :param primary_type: Type name to find dependencies for
+        :type primary_type: str
+        :param types: Dictionary of type definitions
+        :type types: dict
+        :param found_types: Set of already found types (modified in-place)
+        :type found_types: set
+        """
         if primary_type in found_types or primary_type not in types:
             return
 
@@ -412,13 +638,31 @@ class Wallet:
 
     @staticmethod
     def _hash_type(primary_type, types):
-        """Hash a type string according to EIP-712"""
+        """Hash a type string according to EIP-712.
+
+        :param primary_type: Type name to hash
+        :type primary_type: str
+        :param types: Dictionary of type definitions
+        :type types: dict
+        :return: Keccak-256 hash of the encoded type
+        :rtype: int
+        """
         type_string = Wallet._encode_type(primary_type, types)
         return Wallet._hash_message(type_string.encode("utf-8"))
 
     @staticmethod
     def _custom_ljust(data, width, fillchar=b"\x00"):
-        """Left justify bytes"""
+        """Left justify bytes with padding.
+
+        :param data: Data to justify
+        :type data: bytes
+        :param width: Desired width
+        :type width: int
+        :param fillchar: Fill character (default: zero byte)
+        :type fillchar: bytes or int or str
+        :return: Left-justified bytes
+        :rtype: bytes
+        """
         if len(data) >= width:
             return data
         if isinstance(fillchar, int):
@@ -431,7 +675,17 @@ class Wallet:
 
     @staticmethod
     def _custom_rjust(data, width, fillchar=b"\x00"):
-        """Right justify bytes"""
+        """Right justify bytes with padding.
+
+        :param data: Data to justify
+        :type data: bytes
+        :param width: Desired width
+        :type width: int
+        :param fillchar: Fill character (default: zero byte)
+        :type fillchar: bytes or int or str
+        :return: Right-justified bytes
+        :rtype: bytes
+        """
         if len(data) >= width:
             return data
         if isinstance(fillchar, int):
@@ -444,21 +698,41 @@ class Wallet:
 
     @staticmethod
     def _custom_zfill(s, width):
-        """Zero fill string"""
+        """Zero-fill string to specified width.
+
+        :param s: String to pad
+        :type s: str
+        :param width: Desired width
+        :type width: int
+        :return: Zero-padded string
+        :rtype: str
+        """
         if len(s) >= width:
             return s
         return "0" * (width - len(s)) + s
 
     @staticmethod
     def _encode_string(value):
-        """Encode string type"""
+        """Encode string type for EIP-712.
+
+        :param value: String value to encode
+        :type value: str
+        :return: 32-byte hash of the string
+        :rtype: bytes
+        """
         if isinstance(value, str):
             return Wallet._hash_message(value.encode("utf-8")).to_bytes(32, "big")
         return Wallet._hash_message(str(value).encode("utf-8")).to_bytes(32, "big")
 
     @staticmethod
     def _encode_bytes(value):
-        """Encode bytes type"""
+        """Encode dynamic bytes type for EIP-712.
+
+        :param value: Bytes value to encode
+        :type value: bytes or str
+        :return: 32-byte hash of the bytes
+        :rtype: bytes
+        """
         if isinstance(value, str):
             if value.startswith("0x"):
                 return Wallet._hash_message(bytes.fromhex(value[2:])).to_bytes(32, "big")
@@ -467,7 +741,15 @@ class Wallet:
 
     @staticmethod
     def _encode_fixed_bytes(type_name, value):
-        """Encode fixed bytes type (bytes1, bytes32, etc.)"""
+        """Encode fixed-size bytes type (e.g., bytes32) for EIP-712.
+
+        :param type_name: Type name (e.g., 'bytes32')
+        :type type_name: str
+        :param value: Value to encode
+        :type value: str or bytes
+        :return: 32-byte padded value
+        :rtype: bytes
+        """
         if isinstance(value, str) and value.startswith("0x"):
             hex_value = value[2:]
             size = int(type_name[5:]) if len(type_name) > 5 else 32
@@ -477,7 +759,13 @@ class Wallet:
 
     @staticmethod
     def _encode_address(value):
-        """Encode address type"""
+        """Encode Ethereum address type for EIP-712.
+
+        :param value: Ethereum address (with or without 0x prefix)
+        :type value: str
+        :return: 32-byte right-padded address
+        :rtype: bytes
+        """
         if isinstance(value, str):
             addr_hex = value[2:] if value.startswith("0x") else value
             addr_hex = Wallet._custom_zfill(addr_hex.lower(), 40)
@@ -486,7 +774,13 @@ class Wallet:
 
     @staticmethod
     def _encode_uint(value):
-        """Encode unsigned integer type"""
+        """Encode unsigned integer type for EIP-712.
+
+        :param value: Unsigned integer value
+        :type value: int or str
+        :return: 32-byte big-endian encoded value
+        :rtype: bytes
+        """
         if isinstance(value, str):
             num_value = int(value, 16) if value.startswith("0x") else int(value)
         else:
@@ -495,7 +789,13 @@ class Wallet:
 
     @staticmethod
     def _encode_int(value):
-        """Encode signed integer type"""
+        """Encode signed integer type for EIP-712.
+
+        :param value: Signed integer value
+        :type value: int or str
+        :return: 32-byte big-endian encoded value (two's complement for negative)
+        :rtype: bytes
+        """
         if isinstance(value, str):
             num_value = int(value, 16) if value.startswith("0x") else int(value)
         else:
@@ -508,13 +808,29 @@ class Wallet:
 
     @staticmethod
     def _encode_bool(value):
-        """Encode boolean type"""
+        """Encode boolean type for EIP-712.
+
+        :param value: Boolean value
+        :type value: bool
+        :return: 32-byte encoded value (0 or 1)
+        :rtype: bytes
+        """
         bool_value = bool(value)
         return (1 if bool_value else 0).to_bytes(32, "big")
 
     @staticmethod
     def _encode_array(element_type, value, types):
-        """Encode array type"""
+        """Encode array type for EIP-712.
+
+        :param element_type: Type of array elements
+        :type element_type: str
+        :param value: Array value
+        :type value: list or tuple
+        :param types: Dictionary of custom type definitions
+        :type types: dict
+        :return: 32-byte hash of concatenated encoded elements
+        :rtype: bytes
+        """
         if not isinstance(value, (list, tuple)):
             value = [value]
 
@@ -532,7 +848,19 @@ class Wallet:
 
     @staticmethod
     def _encode_value(type_name, value, types):
-        """Encode a value according to its type"""
+        """Encode a value according to its EIP-712 type.
+
+        Handles encoding of various Solidity types including primitives,
+        arrays, and custom structs.
+
+        :param type_name: Name of the type (e.g., 'string', 'uint256', 'address')
+        :type type_name: str
+        :param value: Value to encode
+        :param types: Dictionary of custom type definitions
+        :type types: dict
+        :return: 32-byte encoded value
+        :rtype: bytes
+        """
         result = None
 
         # Primitive types
@@ -567,7 +895,17 @@ class Wallet:
 
     @staticmethod
     def _hash_struct(primary_type, data, types):
-        """Hash a struct according to EIP-712"""
+        """Hash a struct according to EIP-712 specification.
+
+        :param primary_type: Type name of the struct
+        :type primary_type: str
+        :param data: Struct data to hash
+        :type data: dict
+        :param types: Dictionary of type definitions
+        :type types: dict
+        :return: Keccak-256 hash of the encoded struct
+        :rtype: int
+        """
         type_hash = Wallet._hash_type(primary_type, types)
         encoded_data = [type_hash.to_bytes(32, "big")]
 
@@ -589,7 +927,25 @@ class Wallet:
 
     @staticmethod
     def _encode_typed_data_v2(domain, types, primary_type, message):
-        """Enhanced EIP-712 typed data encoding"""
+        """Encode typed data according to EIP-712 specification.
+
+        Creates the final hash by combining domain separator and message hash
+        with the EIP-712 prefix (0x1901).
+
+        :param domain: Domain separator dictionary
+        :type domain: dict
+        :param types: Type definitions dictionary
+        :type types: dict
+        :param primary_type: Name of the primary message type
+        :type primary_type: str
+        :param message: Message data to encode
+        :type message: dict
+        :return: Final EIP-712 hash as integer
+        :rtype: int
+
+        .. seealso::
+            `EIP-712 <https://eips.ethereum.org/EIPS/eip-712>`_ specification.
+        """
         domain_type = {
             "EIP712Domain": [
                 {"name": "name", "type": "string"},
@@ -609,7 +965,14 @@ class Wallet:
         return Wallet._hash_message(final_data)
 
     def _sign_message_hash(self, message_hash):
-        """Sign a message hash with private key using ECDSA"""
+        """Sign a message hash using ECDSA with deterministic k (RFC 6979).
+
+        :param message_hash: Hash of the message to sign
+        :type message_hash: int
+        :return: Tuple of (r, s) signature components
+        :rtype: tuple
+        :raises RuntimeError: If signature generation fails after maximum attempts
+        """
         z = self._safe_mod(message_hash, N)
 
         max_attempts = 50
@@ -649,7 +1012,19 @@ class Wallet:
         raise RuntimeError(f"Failed to generate signature after {max_attempts} attempts")
 
     def _recover_public_key(self, message_hash, r, s, recovery_id):
-        """Recover public key from signature"""
+        """Recover public key from ECDSA signature.
+
+        :param message_hash: Hash of the signed message
+        :type message_hash: int
+        :param r: Signature r component
+        :type r: int
+        :param s: Signature s component
+        :type s: int
+        :param recovery_id: Recovery identifier (0-3)
+        :type recovery_id: int
+        :return: Tuple of (x, y) coordinates of recovered public key, or (None, None) on failure
+        :rtype: tuple
+        """
         try:
             x = r + (recovery_id // 2) * N
 
@@ -676,7 +1051,19 @@ class Wallet:
             return None, None
 
     def _calculate_recovery_id(self, message_hash, r, s):
-        """Calculate the correct recovery ID (v) for the signature"""
+        """Calculate the correct recovery ID (v) for an ECDSA signature.
+
+        Tests all possible recovery IDs to find which one recovers the correct public key.
+
+        :param message_hash: Hash of the signed message
+        :type message_hash: int
+        :param r: Signature r component
+        :type r: int
+        :param s: Signature s component
+        :type s: int
+        :return: Recovery ID (0-3)
+        :rtype: int
+        """
         actual_pub_x, actual_pub_y = self._public_key
 
         for recovery_id in range(4):
@@ -690,15 +1077,28 @@ class Wallet:
         return 0
 
     def signMessage(self, message):
-        """
-        Sign a personal message (ERC-191)
-        Similar to ethers.js wallet.signMessage()
+        """Sign a personal message using ERC-191 standard.
 
-        Args:
-            message: String or bytes to sign
+        Automatically prepends the Ethereum message prefix before signing.
+        Compatible with ethers.js ``wallet.signMessage()`` method.
 
-        Returns:
-            str: Compact signature string in format 0xrrrrr...sssss...vv
+        :param message: Message to sign (string or bytes)
+        :type message: str or bytes
+        :return: Compact signature string (130 hex chars + 0x prefix)
+        :rtype: str
+
+        .. code-block:: python
+
+            wallet = Wallet("0x022b99092266a16a949e6a450f0e88a8288d39d5f1d75c00575a35a0ba270dbc")
+            signature = wallet.signMessage("hello")
+            print(signature)  # "0xrrr...sss...vv"
+
+            # Parse signature
+            sig = getattr(Signature, 'from')(signature)
+            print(sig.r, sig.s, sig.v)
+
+        .. seealso::
+            `ERC-191 <https://eips.ethereum.org/EIPS/eip-191>`_ specification.
         """
         message_hash = self._create_ethereum_message_hash(message)
         r, s = self._sign_message_hash(message_hash)
@@ -712,17 +1112,52 @@ class Wallet:
         return "0x" + r_hex + s_hex + v_hex
 
     def _signTypedData(self, domain, types, message):
-        """
-        Sign typed data using EIP-712 standard
-        Similar to ethers.js wallet._signTypedData()
+        """Sign structured typed data using EIP-712 standard.
 
-        Args:
-            domain: Domain separator dict
-            types: Type definitions dict (without EIP712Domain)
-            message: Message data dict
+        Provides more readable and secure signing for structured data.
+        Compatible with ethers.js ``wallet._signTypedData()`` method.
+        Automatically determines the primary type from the types dictionary.
 
-        Returns:
-            str: Compact signature string in format 0xrrrrr...sssss...vv
+        :param domain: Domain separator containing name, version, chainId, and verifyingContract
+        :type domain: dict
+        :param types: Type definitions (do not include EIP712Domain)
+        :type types: dict
+        :param message: Message data matching the primary type structure
+        :type message: dict
+        :return: Compact signature string (130 hex chars + 0x prefix)
+        :rtype: str
+
+        .. code-block:: python
+
+            domain = {
+                "name": "Ether Mail",
+                "version": "1",
+                "chainId": 1,
+                "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"
+            }
+
+            types = {
+                "Person": [
+                    {"name": "name", "type": "string"},
+                    {"name": "wallet", "type": "address"}
+                ],
+                "Mail": [
+                    {"name": "from", "type": "Person"},
+                    {"name": "to", "type": "Person"},
+                    {"name": "contents", "type": "string"}
+                ]
+            }
+
+            message = {
+                "from": {"name": "Cow", "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+                "to": {"name": "Bob", "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},
+                "contents": "Hello, Bob!"
+            }
+
+            signature = wallet._signTypedData(domain, types, message)
+
+        .. seealso::
+            `EIP-712 <https://eips.ethereum.org/EIPS/eip-712>`_ specification.
         """
         # Determine the primary type from the types dict
         # Find the type that is not referenced by others
@@ -757,16 +1192,16 @@ class Wallet:
         return "0x" + r_hex + s_hex + v_hex
 
     def verify_signature(self, message_hash, r, s):
-        """
-        Verify ECDSA signature
+        """Verify an ECDSA signature against the wallet's public key.
 
-        Args:
-            message_hash: Hash of the message
-            r: Signature r value
-            s: Signature s value
-
-        Returns:
-            bool: True if signature is valid
+        :param message_hash: Hash of the message that was signed
+        :type message_hash: int
+        :param r: Signature r component
+        :type r: int
+        :param s: Signature s component
+        :type s: int
+        :return: True if signature is valid, False otherwise
+        :rtype: bool
         """
         try:
             if r < 1 or r >= N or s < 1 or s >= N:
@@ -791,28 +1226,34 @@ class Wallet:
             return False
 
     def get_address(self):
-        """
-        Get Ethereum address from public key (legacy method, use .address property instead)
+        """Get Ethereum address (legacy method).
 
-        Returns:
-            str: Hex formatted Ethereum address
+        .. deprecated::
+            Use the :attr:`address` property instead.
+
+        :return: Ethereum address with 0x prefix
+        :rtype: str
         """
         return self.address
 
     def get_public_key(self):
-        """
-        Get public key (legacy method)
+        """Get public key coordinates (legacy method).
 
-        Returns:
-            tuple: (x, y) coordinates as integers
+        .. deprecated::
+            Use the :attr:`publicKey` property for hex string representation.
+
+        :return: Tuple of (x, y) coordinates as integers
+        :rtype: tuple
         """
         return self._public_key
 
     def get_private_key(self):
-        """
-        Get private key as integer (legacy method, use .privateKey property for hex string)
+        """Get private key as integer (legacy method).
 
-        Returns:
-            int: Private key
+        .. deprecated::
+            Use the :attr:`privateKey` property for hex string representation.
+
+        :return: Private key as integer
+        :rtype: int
         """
         return self._private_key
