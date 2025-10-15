@@ -220,3 +220,11 @@ Contributing
 Contributions are welcome! Please read our `Code of Conduct
 <https://github.com/ShambaC/CircuitPython_MiniEthers/blob/HEAD/CODE_OF_CONDUCT.md>`_
 before contributing to help this project stay welcoming.
+
+
+PS
+===
+
+I participated in EthGlobal New Delhi this year where me and my team created a hardware wallet for our project. For that purpose we chose a Raspberry Pi Pico. And that is when we realised that the hardware is pretty constrained which doesnt allow existing libraries to work. So I wrote a package that worked on the Pico.
+
+And after some time I decided that I should package this properly and share it as a library, so that people can use this if they want to. That's the story behind this package.

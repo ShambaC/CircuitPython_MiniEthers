@@ -8,12 +8,26 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  upload-release-assets:
+  deploy:
+
     runs-on: ubuntu-latest
+
     steps:
-    - name: Run PyPI Release CI workflow
-      uses: adafruit/workflows-circuitpython-libs/release-pypi@main
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v3
       with:
-        pypi-username: ${{ secrets.pypi_username }}
-        pypi-password: ${{ secrets.pypi_password }}
+        python-version: '3.11'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+    - name: Build package
+      run: python -m build
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@release/v1
