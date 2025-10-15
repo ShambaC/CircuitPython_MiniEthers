@@ -1,24 +1,27 @@
+CircuitPython_MiniEthers
+========================
+
 Introduction
 ============
 
 
-.. image:: https://readthedocs.org/projects/circuitpython-miniethers/badge/?version=latest
+.. image:: https://img.shields.io/readthedocs/circuitpython-miniethers?style=for-the-badge
     :target: https://circuitpython-miniethers.readthedocs.io/
     :alt: Documentation Status
 
 
 
-.. image:: https://img.shields.io/discord/327254708534116352.svg
+.. image:: https://img.shields.io/discord/327254708534116352.svg?style=for-the-badge
     :target: https://adafru.it/discord
     :alt: Discord
 
 
-.. image:: https://github.com/ShambaC/CircuitPython_MiniEthers/workflows/Build%20CI/badge.svg
+.. image:: https://img.shields.io/github/actions/workflow/status/ShambaC/CircuitPython_MiniEthers/build.yml?style=for-the-badge&logo=github&label=Build%20CI
     :target: https://github.com/ShambaC/CircuitPython_MiniEthers/actions
     :alt: Build Status
 
 
-.. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
+.. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge
     :target: https://github.com/astral-sh/ruff
     :alt: Code Style: Ruff
 
